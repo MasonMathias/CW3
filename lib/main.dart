@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget  {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
@@ -30,7 +32,10 @@ class _MyAppState extends State<MyApp> {
         brightness: Brightness.light,
       ),
       darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
         brightness: Brightness.dark,
       ),
@@ -41,7 +46,11 @@ class _MyAppState extends State<MyApp> {
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title, required this.onToggleTheme});
+  const MyHomePage({
+    super.key,
+    required this.title,
+    required this.onToggleTheme,
+  });
 
   final String title;
   final VoidCallback onToggleTheme;
@@ -51,14 +60,15 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  
-  final List<_Task> _tasks = [
-    _Task('1'),
-    _Task('2', done: true),
-    _Task('3'),
-  ];
+  final List<_Task> _tasks = [_Task('1'), _Task('2', done: true), _Task('3')];
 
   final _newTaskCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
 
   @override
   void dispose() {
@@ -73,7 +83,6 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            
             // List
             Container(
               constraints: const BoxConstraints(maxWidth: 360, maxHeight: 380),
@@ -81,7 +90,9 @@ class _MyHomePageState extends State<MyHomePage> {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(blurRadius: 8, color: Color(0x22000000))],
+                boxShadow: const [
+                  BoxShadow(blurRadius: 8, color: Color(0x22000000)),
+                ],
               ),
               child: Scrollbar(
                 child: ListView.separated(
@@ -93,16 +104,22 @@ class _MyHomePageState extends State<MyHomePage> {
                       dense: true,
                       title: Text(
                         t.name,
-                        style: t.done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
+                        style: t.done
+                            ? const TextStyle(
+                                decoration: TextDecoration.lineThrough,
+                              )
+                            : null,
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-
                           // Checkbox
                           Checkbox(
                             value: t.done,
-                            onChanged: (v) => setState(() => t.done = v ?? false),
+                            onChanged: (v) {
+                              setState(() => t.done = v ?? false);
+                              _saveTasks();
+                            },
                           ),
 
                           // Delete button
@@ -110,7 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             message: 'Delete',
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                shape: const CircleBorder()
+                                shape: const CircleBorder(),
                               ),
                               onPressed: () => _removeAt(i),
                               child: const Icon(Icons.remove),
@@ -146,7 +163,10 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 ElevatedButton(onPressed: _addFromBox, child: Icon(Icons.add)),
                 const SizedBox(width: 16),
-                ElevatedButton(onPressed: _toggleTheme, child: Icon(Icons.dark_mode)),
+                ElevatedButton(
+                  onPressed: _toggleTheme,
+                  child: Icon(Icons.dark_mode),
+                ),
               ],
             ),
           ],
@@ -155,15 +175,45 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  Future<void> _saveTasks() async {
+    final sp = await SharedPreferences.getInstance();
+    final ok = await sp.setString(
+      'tasks',
+      jsonEncode(_tasks.map((t) => t.toJson()).toList()),
+    );
+    if (!ok) debugPrint('prefs save failed');
+  }
+
+  Future<void> _loadTasks() async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString('tasks');
+    if (raw == null) return;
+    try {
+      final decoded = jsonDecode(raw) as List;
+      final items = decoded
+          .map((e) => _Task.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      setState(() {
+        _tasks
+          ..clear()
+          ..addAll(items);
+      });
+    } catch (e) {
+      debugPrint('prefs parse error: $e');
+    }
+  }
+
   void _addFromBox() {
     final name = _newTaskCtrl.text.trim();
     if (name.isEmpty) return;
     setState(() => _tasks.add(_Task(name)));
     _newTaskCtrl.clear();
+    _saveTasks();
   }
 
   void _removeAt(int index) {
     setState(() => _tasks.removeAt(index));
+    _saveTasks();
   }
 
   void _toggleTheme() {
@@ -175,4 +225,8 @@ class _Task {
   String name;
   bool done;
   _Task(this.name, {this.done = false});
+
+  Map<String, dynamic> toJson() => {'name': name, 'done': done};
+  factory _Task.fromJson(Map<String, dynamic> m) =>
+      _Task(m['name'] as String, done: m['done'] as bool? ?? false);
 }
